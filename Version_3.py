@@ -760,16 +760,81 @@ def format_float_list(values, digits=2):
     return "[" + ", ".join(f"{v:.{digits}f}" for v in values) + "]"
 
 
+
+def build_export_explanation():
+    return [
+        "GENERIC EXPLANATION",
+        "-------------------",
+        "This section explains the meaning of the exported numbers.",
+        "",
+        "k",
+        "  Number of active robot links/joints in the planar arm.",
+        "  Example: k=2 means the arm has two links: L1 and L2.",
+        "",
+        "L_i / link_lengths_px",
+        "  Length of link i. In this demo the unit is pixels.",
+        "  If you want physical units, define a scale such as 1 px = 1 mm.",
+        "",
+        "theta_relative_deg",
+        "  Relative joint angles in degrees.",
+        "  theta_relative_deg[0] is the angle of the first link relative to the world x-axis.",
+        "  theta_relative_deg[1] is the rotation of link 2 relative to link 1.",
+        "  theta_relative_deg[2] is the rotation of link 3 relative to link 2, and so on.",
+        "",
+        "theta_absolute_deg",
+        "  Absolute/world orientation of each link in degrees.",
+        "  These are cumulative sums of the relative joint angles.",
+        "  Example for k=3:",
+        "    theta_absolute_1 = theta_relative_1",
+        "    theta_absolute_2 = theta_relative_1 + theta_relative_2",
+        "    theta_absolute_3 = theta_relative_1 + theta_relative_2 + theta_relative_3",
+        "",
+        "x_j and y_j",
+        "  Position of joint j measured from the robot base.",
+        "  The base is treated as coordinate (0, 0).",
+        "  x is positive to the right, y is positive upward.",
+        "",
+        "Forward kinematics equation",
+        "  x_j = sum(i=1..j) L_i * cos(theta_absolute_i)",
+        "  y_j = sum(i=1..j) L_i * sin(theta_absolute_i)",
+        "  For the end effector, j = k.",
+        "",
+        "x_end / y_end",
+        "  Numerically evaluated forward kinematics for the current end effector position.",
+        "  This is where the claw/end of the robot arm currently is.",
+        "",
+        "active_target",
+        "  The current target point used by the active mode.",
+        "  In END IK this is the end-effector target.",
+        "  In JOINT IK this is the selected joint target.",
+        "",
+        "selected_Jn",
+        "  Current coordinate of the selected joint.",
+        "  Example: selected_J2 = (x, y) means joint 2 is located at that coordinate.",
+        "",
+        "mode",
+        "  END IK: solver moves the whole arm so the end effector tries to reach the target.",
+        "  JOINT IK: solver moves the arm so the selected joint tries to reach the target.",
+        "  MANUAL FK: user directly changes joint angles/lengths and the pose is calculated forward.",
+        "",
+        "No-crossing guard",
+        "  The arm rejects poses where non-adjacent links intersect or where a joint flips through the locked bending side.",
+        "  Press C in the app to recalibrate the current bending side as the new valid reference.",
+        "",
+    ]
+
+
 def build_kinematic_entry(reason):
     timestamp = datetime.now().strftime("%H:%M:%S")
     k = len(lengths)
-    rel_world = [normalize_angle(-a) for a in angles]
-    cum_world = cumulative_world_angles_deg(angles)
+
+    theta_relative_deg = [normalize_angle(-a) for a in angles]
+    theta_absolute_deg = [normalize_angle(a) for a in cumulative_world_angles_deg(angles)]
 
     terms_x = []
     terms_y = []
 
-    for length, absolute_angle in zip(lengths, cum_world):
+    for length, absolute_angle in zip(lengths, theta_absolute_deg):
         terms_x.append(f"{length:.1f}*cos({absolute_angle:.2f}deg)")
         terms_y.append(f"{length:.1f}*sin({absolute_angle:.2f}deg)")
 
@@ -786,7 +851,8 @@ def build_kinematic_entry(reason):
         symbolic_y,
         f"x_end = {' + '.join(terms_x)} = {end_world.x:.2f}",
         f"y_end = {' + '.join(terms_y)} = {end_world.y:.2f}",
-        f"theta_rel_world_deg = {format_float_list(rel_world)}",
+        f"theta_relative_deg = {format_float_list(theta_relative_deg)}",
+        f"theta_absolute_deg = {format_float_list(theta_absolute_deg)}",
         f"link_lengths_px = {format_float_list(lengths, 1)}",
         f"active_target = ({active.x:.2f}, {active.y:.2f}) | selected_J{selected_joint} = ({selected_world.x:.2f}, {selected_world.y:.2f})",
     ]
@@ -847,6 +913,8 @@ def export_kinematics_log():
         "Angles are displayed in world/math orientation, so positive rotation is counter-clockwise.",
         "",
     ]
+
+    header.extend(build_export_explanation())
 
     body = []
     for i, entry in enumerate(equation_entries, start=1):
